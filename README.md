@@ -70,7 +70,7 @@ one linear solve with no eigendecomposition anywhere, and it removes **97.700%**
 the three-factor hedge's **96.789%**. PCA loses by 0.911 percentage points on this
 book, and on **7 of 7** books once the DV01 profile is redrawn (`hedge_oos.py`,
 seed 7), with margins of −0.02, −0.08, −0.10, −0.27, −0.80, −0.91 and −14.78 points. The
-worst case is the one to look at — a book the three factors happen to hedge badly
+worst case is the one to look at, a book the three factors happen to hedge badly
 (47.9% removed) is one min-variance still handles at 62.7%.
 
 That is not a defect in the implementation. It is what the two objectives are. The
