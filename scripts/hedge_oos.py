@@ -42,6 +42,11 @@ def main() -> None:
     unhedged: list[np.ndarray] = []
     three_factor: list[np.ndarray] = []
     duration_only: list[np.ndarray] = []
+    min_variance: list[np.ndarray] = []
+
+    selector: np.ndarray = np.zeros((len(tenors), len(hedge_indices)))
+    for column, index in enumerate(hedge_indices):
+        selector[index, column] = 1.0
 
     for start in range(0, len(matrix) - TRAIN - TEST, TEST):
         train: np.ndarray = matrix[start:start + TRAIN]
@@ -54,13 +59,24 @@ def main() -> None:
         naive: np.ndarray = dv01.copy()
         naive[tenors.index("10 Yr")] -= dv01.sum()
 
+        # The null model this repo has to beat, and the first thing an
+        # interviewer asks about a PCA hedge. Minimise h'(P'SP)h + 2h'P'S*dv01
+        # directly on the training covariance, no eigendecomposition anywhere:
+        #     h = -(P'SP)^-1 P'S dv01
+        train_cov: np.ndarray = np.cov(train, rowvar=False)
+        mv_h: np.ndarray = -np.linalg.solve(
+            selector.T @ train_cov @ selector, selector.T @ train_cov @ dv01)
+        mv: np.ndarray = dv01 + selector @ mv_h
+
         unhedged.append(test @ dv01)
         three_factor.append(test @ hedged)
         duration_only.append(test @ naive)
+        min_variance.append(test @ mv)
 
     base: np.ndarray = np.concatenate(unhedged)
     hedged_pnl: np.ndarray = np.concatenate(three_factor)
     naive_pnl: np.ndarray = np.concatenate(duration_only)
+    mv_pnl: np.ndarray = np.concatenate(min_variance)
 
     print(f"walk-forward: {TRAIN}-day estimation, {TEST}-day holding, "
           f"{len(base)} out-of-sample days")
@@ -70,7 +86,8 @@ def main() -> None:
     print(f"  {'hedge':<22}{'daily P&L sd':>16}{'variance removed':>20}")
     print("  " + "-" * 58)
     print(f"  {'unhedged':<22}${base.std(ddof=1):>15,.0f}")
-    for name, series in [("DV01-neutral only", naive_pnl), ("three-factor", hedged_pnl)]:
+    for name, series in [("DV01-neutral only", naive_pnl), ("three-factor PCA", hedged_pnl),
+                         ("min-variance (no PCA)", mv_pnl)]:
         reduction: float = 1.0 - series.var(ddof=1) / base.var(ddof=1)
         print(f"  {name:<22}${series.std(ddof=1):>15,.0f}{reduction:>19.1%}")
 
@@ -87,11 +104,31 @@ def main() -> None:
     print(f"  walk-forward, never-seen days         : {realised:>8.3%}")
     print(f"  degradation                           : {(in_sample - realised) * 100:>8.3f} pts")
     print()
+    mv_reduction: float = 1.0 - mv_pnl.var(ddof=1) / base.var(ddof=1)
+    print(f"  min-variance, same protocol           : {mv_reduction:>8.3%}")
+    print(f"  PCA minus min-variance                : {(realised - mv_reduction) * 100:>8.3f} pts")
+    print()
     print("Reading: the hedge survives out of sample essentially intact. That is not luck,")
     print("it follows from the loading stability measured in stability.py: PC1 moves under a")
     print("degree when the estimation window rolls forward a month, so a hedge solved on last")
     print("year is still the right hedge this month. A yield curve is an unusually benign case")
     print("for this. Do not carry the result over to a covariance matrix that moves more.")
+    print()
+    print("And the null model wins on this metric. Solving the same problem straight off the")
+    print("sample covariance, with no eigendecomposition at all, removes more variance than")
+    print("the three-factor hedge does. That is not a bug in the PCA hedge, it is what the")
+    print("two are optimising: min-variance minimises exactly the quantity being scored here,")
+    print("so on a stable covariance and a book inside the estimation panel it must win or")
+    print("tie. Three reasons to still want the factor hedge, none of which this test scores:")
+    print("  1. The factor hedge is expressed in level/slope/curvature exposures, which are")
+    print("     the units a desk sets limits in. Min-variance returns three numbers with no")
+    print("     interpretation and no way to attribute a P&L miss to a cause.")
+    print("  2. It transfers. Loadings fitted here price an instrument that was never in the")
+    print("     panel; an inverse sample covariance does not extend past its own columns.")
+    print("  3. Min-variance inverts the sample covariance, which is where estimation error")
+    print("     concentrates. It wins on 250 clean days of a benign curve. Shorten the window")
+    print("     or widen the panel and the ranking is not safe -- the honest version of that")
+    print("     claim needs a second experiment this repo has not run.")
 
 
 if __name__ == "__main__":

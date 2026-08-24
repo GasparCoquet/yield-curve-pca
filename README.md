@@ -57,10 +57,38 @@ out-of-sample days from January 2016 to August 2026:
 |---|---|---|
 | unhedged | $223,677 | |
 | DV01-neutral only | $155,640 | 51.6% |
-| three-factor | $40,082 | **96.8%** |
+| three-factor PCA | $40,082 | 96.8% |
+| **min-variance, no PCA at all** | **$33,920** | **97.7%** |
 
 Duration-neutral removes half the risk. Three factors remove almost all of it, because
 what is left is PC4 and beyond, which carry 1.09% of curve variance.
+
+### The null model wins, and that is the honest headline
+
+Solve the same hedge straight off the training covariance -- `h = -(P'SP)^-1 P'S v`,
+one linear solve, no eigendecomposition anywhere -- and it removes **97.700%** against
+the three-factor hedge's **96.789%**. PCA loses by 0.911 percentage points on this
+book, and loses on every one of six randomly drawn books.
+
+That is not a defect in the implementation. It is what the two objectives are: the
+min-variance hedge minimises exactly the quantity being scored, so on a stable
+covariance with the book inside the estimation panel it must win or tie. Reporting
+96.8% without this row would be reporting a win against a benchmark chosen not to
+compete.
+
+Three reasons to want the factor hedge anyway, none of which this test scores:
+
+1. **Units.** The factor hedge is expressed as level, slope and curvature exposures,
+   which is what a desk sets limits in and attributes P&L against. Min-variance
+   returns three numbers with no interpretation; when the hedge misses, it cannot say
+   which factor moved.
+2. **Transfer.** Loadings fitted here price an instrument that was never in the panel.
+   An inverted sample covariance does not extend past its own columns.
+3. **Estimation error.** Min-variance inverts the sample covariance, which is where
+   estimation error concentrates. It wins on 250 clean days of an unusually
+   well-behaved curve. Shorten the window or widen the panel and the ranking is not
+   safe -- though stating that as a finding rather than an expectation needs a second
+   experiment this repo has not run.
 
 Estimating and scoring on the same days gives 96.803%. Walk-forward gives 96.789%, a
 degradation of **0.014 percentage points**. That is not luck, it follows from the
@@ -101,8 +129,18 @@ denominated in money, and standardising would distort it.
 **3. What are PC1/2/3 on a curve, and what share does PC1 explain?**
 
 Level, slope, curvature. PC1 is **87.9%** on the coupon curve over 2015 to 2026, and
-between 87.7% and 89.9% in every sub-period tested. The usual "about 90%" is right,
-**for the coupon curve**. See the bill finding below for the panel where it is not.
+between 87.7% and 89.9% across the four calendar regimes in `sensitivity.py`
+(2015-19: 89.90%, 2020-21: 87.67%, 2022-23: 89.33%, 2024-26: 89.40%). The usual
+"about 90%" is right, **for the coupon curve**. See the bill finding below for the
+panel where it is not.
+
+That range is narrower than the honest one, because those four cuts are two to four
+years each. Re-fit on the 250-day window a desk would actually use and
+`stability.py` reports PC1 at **min 84.4%, median 90.6%, max 93.3%** over 127
+rolling windows. Both numbers are real and they answer different questions: the
+first is how much the level factor explains in a regime, the second is how much the
+number you would have quoted on any given day moves around. Quote the second one if
+someone asks whether 87.9% is stable.
 
 **4. Add a month of data. What happens to the loadings?**
 
