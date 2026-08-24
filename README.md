@@ -65,10 +65,13 @@ what is left is PC4 and beyond, which carry 1.09% of curve variance.
 
 ### The null model wins, and that is the honest headline
 
-Solve the same hedge straight off the training covariance -- `h = -(P'SP)^-1 P'S v`,
-one linear solve, no eigendecomposition anywhere -- and it removes **97.700%** against
+Solve the same hedge straight off the training covariance, `h = -(P'SP)^-1 P'S v`,
+one linear solve with no eigendecomposition anywhere, and it removes **97.700%** against
 the three-factor hedge's **96.789%**. PCA loses by 0.911 percentage points on this
-book, and loses on every one of six randomly drawn books.
+book, and on **7 of 7** books once the DV01 profile is redrawn (`hedge_oos.py`,
+seed 7): margins of −0.02, −0.08, −0.10, −0.27, −0.80, −0.91 and −14.78 points. The
+worst case is the one to look at — a book the three factors happen to hedge badly
+(47.9% removed) is one min-variance still handles at 62.7%.
 
 That is not a defect in the implementation. It is what the two objectives are: the
 min-variance hedge minimises exactly the quantity being scored, so on a stable
@@ -87,7 +90,7 @@ Three reasons to want the factor hedge anyway, none of which this test scores:
 3. **Estimation error.** Min-variance inverts the sample covariance, which is where
    estimation error concentrates. It wins on 250 clean days of an unusually
    well-behaved curve. Shorten the window or widen the panel and the ranking is not
-   safe -- though stating that as a finding rather than an expectation needs a second
+   safe, though stating that as a finding rather than an expectation needs a second
    experiment this repo has not run.
 
 Estimating and scoring on the same days gives 96.803%. Walk-forward gives 96.789%, a

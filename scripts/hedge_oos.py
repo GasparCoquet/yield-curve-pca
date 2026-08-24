@@ -127,9 +127,57 @@ def main() -> None:
     print("     panel; an inverse sample covariance does not extend past its own columns.")
     print("  3. Min-variance inverts the sample covariance, which is where estimation error")
     print("     concentrates. It wins on 250 clean days of a benign curve. Shorten the window")
-    print("     or widen the panel and the ranking is not safe -- the honest version of that")
+    print("     or widen the panel and the ranking is not safe. The honest version of that")
     print("     claim needs a second experiment this repo has not run.")
+
+
+def random_books(seed: int = 7, draws: int = 6) -> None:
+    """One book is an anecdote. Redraw the DV01 profile and check the ranking holds."""
+    levels = data.load()[data.COUPON]
+    changes = data.daily_changes(levels)
+    matrix: np.ndarray = changes.to_numpy()
+    tenors: list[str] = list(changes.columns)
+    hedge_indices: list[int] = [tenors.index(t) for t in HEDGE_TENORS]
+
+    selector: np.ndarray = np.zeros((len(tenors), len(hedge_indices)))
+    for column, index in enumerate(hedge_indices):
+        selector[index, column] = 1.0
+
+    def score(dv01: np.ndarray) -> tuple[float, float]:
+        base, pca_pnl, mv_pnl = [], [], []
+        for start in range(0, len(matrix) - TRAIN - TEST, TEST):
+            train, test = matrix[start:start + TRAIN], matrix[start + TRAIN:start + TRAIN + TEST]
+            fitted = pca.fit_eig(train, standardise=False, n_components=3)
+            hedge = curve.solve_three_factor_hedge(dv01, fitted.loadings, hedge_indices)
+            train_cov = np.cov(train, rowvar=False)
+            mv_h = -np.linalg.solve(selector.T @ train_cov @ selector, selector.T @ train_cov @ dv01)
+            base.append(test @ dv01)
+            pca_pnl.append(test @ curve.apply_hedge(dv01, hedge, hedge_indices))
+            mv_pnl.append(test @ (dv01 + selector @ mv_h))
+        variance = np.concatenate(base).var(ddof=1)
+        return (1.0 - np.concatenate(pca_pnl).var(ddof=1) / variance,
+                1.0 - np.concatenate(mv_pnl).var(ddof=1) / variance)
+
+    rng = np.random.default_rng(seed)
+    print()
+    print(f"--- does the ranking survive a different book? (seed {seed}) ---")
+    print(f"  {'book':<10}{'three-factor':>14}{'min-variance':>14}{'PCA - MV':>11}")
+    losses = 0
+    books: list[tuple[str, np.ndarray]] = [
+        ("default", np.array([BOOK.get(t, 0.0) for t in tenors]))]
+    for draw in range(draws):
+        dv01 = np.zeros(len(tenors))
+        for tenor in BOOK:
+            dv01[tenors.index(tenor)] = rng.uniform(-60_000.0, 60_000.0)
+        books.append((f"random {draw + 1}", dv01))
+    for name, dv01 in books:
+        pca_r, mv_r = score(dv01)
+        losses += pca_r < mv_r
+        print(f"  {name:<10}{pca_r:>13.3%}{mv_r:>14.3%}{(pca_r - mv_r) * 100:>10.3f}")
+    print()
+    print(f"  PCA loses on {losses} of {len(books)} books.")
 
 
 if __name__ == "__main__":
     main()
+    random_books()
